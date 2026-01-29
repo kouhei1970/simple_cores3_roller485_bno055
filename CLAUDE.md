@@ -2,16 +2,32 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+---
+
+## 📖 Quick Reference
+
+**New to this project?** Start with [README.md](README.md) for setup instructions, build commands, and tuning guide.
+
+**このプロジェクトが初めての方は** [README.md](README.md) でセットアップ手順、ビルドコマンド、調整ガイドを参照してください。
+
+---
+
 ## Project Overview
 
-This is a PlatformIO-based Arduino project for M5Stack CoreS3 that integrates:
-- **BNO055 IMU sensor** (9-axis absolute orientation sensor) via I2C
-- **Unit Roller I2C motor** (M5Stack's motor driver unit) for motion control
-- Real-time feedback control using IMU orientation data to drive the motor
+This is a **Reaction Wheel Inverted Pendulum** control system using PlatformIO for M5Stack CoreS3:
 
-The application reads pitch angle (Euler Y) from BNO055 and uses it to control the motor current, creating a simple tilt-based control system.
+- **BNO055 IMU sensor** (9-axis absolute orientation sensor) via ESP-IDF I2C
+- **Unit Roller I2C motor** (M5Stack's motor driver unit) for torque generation
+- **PD control** (Proportional-Derivative) for inverted pendulum stabilization
+- **Real-time safety monitoring** with automatic shutdown on limit violation
 
-**⚠️ Known Issue**: BNO055 currently uses Arduino Wire library, which is unstable. Migration to ESP-IDF I2C driver is required. See "Critical Implementation Notes" section below.
+The application implements a closed-loop PD controller that reads pitch angle and angular velocity from BNO055 and commands motor current to stabilize the inverted pendulum.
+
+**✅ Implementation Status**:
+- ESP-IDF I2C driver for BNO055: ✅ Complete (stable communication)
+- PD control implementation: ✅ Complete (Kp=100, Kd=5)
+- Safety limits: ✅ Complete (±30° pitch, ±300 dps rate)
+- Real-time monitoring display: ✅ Complete
 
 ## Hardware Configuration
 
@@ -118,16 +134,13 @@ simple_cores3_roller485_bno055/
 
 **PlatformIO lib_deps:**
 - `M5Unified` (M5Stack display/hardware abstraction)
-- `Adafruit BNO055` (IMU driver) - **⚠️ TO BE REMOVED - unstable Wire implementation**
-- `Adafruit Unified Sensor` (Sensor abstraction layer) - **⚠️ TO BE REMOVED**
-- `Adafruit BusIO` (I2C/SPI helpers) - **⚠️ TO BE REMOVED**
+- `Adafruit BNO055` (for IMU math types: imu::Vector, imu::Quaternion)
+- `Adafruit Unified Sensor` (sensor abstraction layer)
+- `Adafruit BusIO` (I2C/SPI helpers)
+
+**Note:** Adafruit libraries are kept for their math types and data structures, but I2C communication uses custom ESP-IDF driver implementation.
 
 **Platform:** espressif32@6.7.0
-
-**Migration Plan:**
-- Replace Adafruit_BNO055 with custom ESP-IDF I2C driver (see `I2C_DRIVER_ANALYSIS.md`)
-- Remove all Wire-based dependencies after BNO055 migration
-- Keep only M5Unified for display/hardware abstraction
 
 ## Serial Monitor
 
@@ -147,48 +160,60 @@ vin:<voltage> cur:<current> spd:<speed> pos:<position>
 
 ## Critical Implementation Notes
 
-### ⚠️ I2C Driver Conflict Issue - **ACTION REQUIRED**
+### ✅ ESP-IDF I2C Driver Implementation - **COMPLETE**
 
-**CRITICAL**: The current codebase has **conflicting I2C driver implementations** that pose stability risks:
+**Status**: Both BNO055 and Unit Roller now use stable ESP-IDF I2C drivers:
 
-- **Unit Roller**: Uses ESP-IDF low-level I2C driver (I2C_NUM_0) - **working correctly**
-- **BNO055**: Uses Arduino Wire library - **unstable, requires migration**
+- **Unit Roller**: ESP-IDF I2C driver (I2C_NUM_0, GPIO2/1) - proven reliable
+- **BNO055**: ESP-IDF I2C driver (I2C_NUM_1, GPIO6/7) - newly implemented
 
-**Why Wire doesn't work:**
-- Unit Roller's `unit_rolleri2c.cpp` contains commented-out Wire implementation (`#if 0` blocks at lines 28-35, 73-82, 159-175) that **failed in production**
-- Wire was replaced with ESP-IDF driver for precise timing, reliable error handling, and resource management
-- BNO055 is experiencing the same Wire-related issues and **must migrate to ESP-IDF driver**
+**Implementation Details:**
+- Custom `BNO055_ESPIDF` class created with ESP-IDF I2C transport layer
+- Reuses proven Adafruit_BNO055 initialization logic (Thin Wrapper Pattern)
+- Separate I2C buses prevent interference between sensor and motor
+- Conditional compilation allows switching between ESP-IDF and Wire for testing
 
-**Evidence of Wire failure:**
-```cpp
-// unit_rolleri2c.cpp:159-175
-#if 0   // This is the original code - DOESN'T WORK
-    _wire->begin(_sda, _scl);
-    _wire->setClock(_speed);
-    // ... (removed implementation)
-#endif
-```
-
-**Required Action:**
-- Implement BNO055 driver using ESP-IDF I2C (I2C_NUM_1) following Unit Roller pattern
-- Remove Adafruit_BNO055 and Wire dependencies
-- See `I2C_DRIVER_ANALYSIS.md` for detailed implementation plan
+**Key Files:**
+- `src/bno055_espidf.hpp` - BNO055 ESP-IDF driver header
+- `src/bno055_espidf.cpp` - ESP-IDF I2C implementation + Adafruit logic reuse
+- `src/main.cpp` - Driver selection via `#define USE_ESPIDF_BNO055`
 
 **Reference Documentation:**
-- **Full Analysis Report**: `I2C_DRIVER_ANALYSIS.md` (comprehensive technical details, implementation examples, test plan)
-- **Unit Roller ESP-IDF Pattern**: `src/unit_rolleri2c.cpp` lines 17-101 (writeBytes/readBytes methods)
+- **Technical Analysis**: [I2C_DRIVER_ANALYSIS.md](I2C_DRIVER_ANALYSIS.md) - Why Wire failed, ESP-IDF migration rationale
+- **Control Theory**: [CONTROL_REVIEW.md](CONTROL_REVIEW.md) - PD control design for inverted pendulum
+
+### ✅ PD Control Implementation - **COMPLETE**
+
+**Status**: Proper PD control for inverted pendulum stabilization:
+
+- Control law: `cmd = Kp*pitch + Kd*pitch_rate`
+- Proportional gain: Kp = 100.0 [current/deg]
+- Derivative gain: Kd = 5.0 [current/(deg/s)]
+- Control frequency: 100 Hz (10ms sampling)
+- Safety limits: ±30° pitch, ±300 dps angular velocity
+
+**Key Features:**
+- Real-time safety monitoring with automatic motor shutdown
+- Control enable/disable flag for testing
+- Display shows control status, gains, and sensor data
+- Gyro unit correction ([dps] not [rad/s])
+
+**Tuning Required:**
+- Verify control axis direction on first power-up
+- Adjust Kp/Kd gains based on system response
+- See [README.md](README.md) Tuning Guide section
 
 ### Other Critical Notes
 
-1. **I2C Port Separation:** Unit Roller uses I2C_NUM_0 (GPIO2/1), BNO055 should use I2C_NUM_1 (GPIO6/7). Never share the same I2C port between ESP-IDF and Wire drivers.
+1. **I2C Port Separation**: Unit Roller (I2C_NUM_0, GPIO2/1), BNO055 (I2C_NUM_1, GPIO6/7) - never share I2C buses between different drivers.
 
-2. **Safety:** Motor is set to current mode with initial current 0. The `motorStopSafe()` function is defined but not currently used in error handling.
+2. **Safety System**: Motor runs in current mode (Mode 3). The `motorStopSafe()` function sets current=0 and output=0, and is called when safety limits are exceeded (pitch > ±30° or rate > ±300 dps).
 
-3. **No Display Clearing:** Main loop uses `startWrite()/endWrite()` without `fillScreen()` for performance - text overwrites previous content at same cursor positions.
+3. **Display Performance**: Main loop uses `startWrite()/endWrite()` without `fillScreen()` - text overwrites previous content at same cursor positions for 100Hz refresh rate.
 
-4. **Control Law:** Simple proportional control (pitch × 100) without limits beyond clamping. No PID, no integral windup protection, no derivative filtering.
+4. **Control Axis Verification**: Before enabling closed-loop control, verify that control direction is correct. If system diverges, reverse control sign in main.cpp:185.
 
-5. **I2C Initialization Guard:** `UnitRollerI2C::initialized` static flag prevents double-initialization of I2C driver, which would cause ESP-IDF errors. Same pattern needed for BNO055 ESP-IDF driver.
+5. **I2C Initialization Guard**: Both `UnitRollerI2C::initialized` and `BNO055_ESPIDF::initialized_i2c1` static flags prevent double-initialization of I2C drivers, which would cause ESP-IDF errors.
 
 ## Common Development Workflow
 
