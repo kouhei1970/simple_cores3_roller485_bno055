@@ -94,6 +94,19 @@ git clone https://github.com/kouhei1970/simple_cores3_roller485_bno055.git
 cd simple_cores3_roller485_bno055
 ```
 
+#### ブランチの選択
+
+**推奨: `kouhei_dev` ブランチを使用してください（最新の実装を含む）**
+
+```bash
+# 開発ブランチに切り替え（ESP-IDF I2C + PD制御実装）
+git checkout kouhei_dev
+```
+
+**ブランチ構成:**
+- `main` - 初期実装（Wire I2C、P制御のみ）
+- `kouhei_dev` - 最新実装（ESP-IDF I2C、PD制御、安全機能） ⭐ 推奨
+
 ---
 
 ### 2. ビルド
@@ -365,6 +378,12 @@ ESP-IDF I2Cドライバ実装：
 - GitHubでissueを開く
 - `CLAUDE.md`、`I2C_DRIVER_ANALYSIS.md`、`CONTROL_REVIEW.md`の既存ドキュメントを確認
 
+### 開発ブランチ情報
+
+- **メインブランチ**: `main` - 初期実装版
+- **開発ブランチ**: `kouhei_dev` - 最新の改善実装（ESP-IDF I2C、PD制御、安全機能）
+- **プルリクエスト**: 最新の実装をmainブランチにマージするには、GitHubで`kouhei_dev`から`main`へのPRを作成してください
+
 ---
 
 ## 謝辞
@@ -459,6 +478,19 @@ pio --version
 git clone https://github.com/kouhei1970/simple_cores3_roller485_bno055.git
 cd simple_cores3_roller485_bno055
 ```
+
+#### Select Branch
+
+**Recommended: Use `kouhei_dev` branch (contains latest implementations)**
+
+```bash
+# Switch to development branch (ESP-IDF I2C + PD control)
+git checkout kouhei_dev
+```
+
+**Branch Structure:**
+- `main` - Initial implementation (Wire I2C, P-control only)
+- `kouhei_dev` - Latest implementation (ESP-IDF I2C, PD control, safety features) ⭐ Recommended
 
 ---
 
@@ -730,6 +762,12 @@ For questions, issues, or contributions, please:
 
 - Open an issue on GitHub
 - Check existing documentation in `CLAUDE.md`, `I2C_DRIVER_ANALYSIS.md`, or `CONTROL_REVIEW.md`
+
+### Development Branch Information
+
+- **Main branch**: `main` - Initial implementation
+- **Development branch**: `kouhei_dev` - Latest implementations (ESP-IDF I2C, PD control, safety features)
+- **Pull Request**: To merge latest implementations into main, create a PR from `kouhei_dev` to `main` on GitHub
 
 ---
 
