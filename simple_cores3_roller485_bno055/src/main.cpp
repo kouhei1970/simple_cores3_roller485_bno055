@@ -3,10 +3,27 @@
 
 #include <Arduino.h>
 #include <M5Unified.h>
-#include <Wire.h>
 
-#include <Adafruit_BNO055.h>
-#include <utility/imumaths.h>
+// ============================================================================
+// BNO055 Driver Selection
+// BNO055ドライバ選択
+// ============================================================================
+// Uncomment to use ESP-IDF I2C driver (recommended for stability)
+// ESP-IDF I2Cドライバを使用する場合はコメント解除（安定性のため推奨）
+#define USE_ESPIDF_BNO055
+
+#ifdef USE_ESPIDF_BNO055
+  // ESP-IDF I2C Driver (stable, proven pattern from Unit Roller)
+  // ESP-IDF I2Cドライバ（安定、Unit Rollerで実証済み）
+  #include "bno055_espidf.hpp"
+  #include <utility/imumaths.h>
+#else
+  // Arduino Wire Driver (unstable, for comparison only)
+  // Arduino Wireドライバ（不安定、比較用のみ）
+  #include <Wire.h>
+  #include <Adafruit_BNO055.h>
+  #include <utility/imumaths.h>
+#endif
 
 // =====================================
 static constexpr uint8_t  ROLLER_ADDR = 0x64;
@@ -26,7 +43,13 @@ static constexpr uint8_t  BNO_ADDR = 0x28;  // 0x29
 UnitRollerI2C Roller;
 bool UnitRollerI2C::initialized = false;
 
-static Adafruit_BNO055 bno(55, BNO_ADDR, &Wire);
+// BNO055 Driver Instance
+// BNO055ドライバインスタンス
+#ifdef USE_ESPIDF_BNO055
+  static BNO055_ESPIDF bno;
+#else
+  static Adafruit_BNO055 bno(55, BNO_ADDR, &Wire);
+#endif
 
 static void motorStopSafe() {
   Roller.setCurrent(0);
@@ -44,12 +67,36 @@ void setup() {
   M5.Display.setTextSize(2);
   M5.Display.printf("Init...\n");
 
+  // Initialize Unit Roller (I2C_NUM_0: GPIO2/GPIO1)
+  // Unit Rollerを初期化（I2C_NUM_0: GPIO2/GPIO1）
   Roller.begin(ROLLER_ADDR, I2C_SDA_PIN, I2C_SCL_PIN, I2C_HZ);
+  M5.Display.printf("Roller: OK\n");
 
+  // Initialize BNO055 (I2C_NUM_1: GPIO6/GPIO7)
+  // BNO055を初期化（I2C_NUM_1: GPIO6/GPIO7）
+#ifdef USE_ESPIDF_BNO055
+  // ESP-IDF I2C Driver
+  if (!bno.begin(BNO_ADDR, SDA_PIN, SCL_PIN, I2C_HZ)) {
+    M5.Display.printf("BNO055: FAILED\n");
+    while (1) {
+      delay(100);
+    }
+  }
+  M5.Display.printf("BNO055: OK (ESP-IDF)\n");
+#else
+  // Arduino Wire Driver
   Wire.begin(SDA_PIN, SCL_PIN, I2C_HZ);
+  if (!bno.begin()) {
+    M5.Display.printf("BNO055: FAILED\n");
+    while (1) {
+      delay(100);
+    }
+  }
+  M5.Display.printf("BNO055: OK (Wire)\n");
+#endif
 
-  bno.begin();
-
+  // Configure motor
+  // モーター設定
   Roller.setMode(3);
   Roller.setCurrent(0);
   Roller.setOutput(1);
@@ -61,9 +108,17 @@ void loop() {
 
   M5.update();
 
+  // Read BNO055 sensor data
+  // BNO055センサーデータを読み取り
+#ifdef USE_ESPIDF_BNO055
+  imu::Vector<3> eul  = bno.getVector(VECTOR_EULER);       // [deg] eul.x() eul.y() eul.z()
+  imu::Quaternion q   = bno.getQuat();                     // q.w() q.x() q.y() q.z()
+  imu::Vector<3> gyro = bno.getVector(VECTOR_GYROSCOPE);   // [dps] gyro.x() gyro.y() gyro.z()
+#else
   imu::Vector<3> eul  = bno.getVector(Adafruit_BNO055::VECTOR_EULER);       // [deg] eul.x() eul.y() eul.z()
   imu::Quaternion q   = bno.getQuat();                                      // q.w() q.x() q.y() q.z()
   imu::Vector<3> gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);   // [rad/s] gyro.x() gyro.y() gyro.z()
+#endif
 
   float cmd_f = eul.y() * 100.0f;
   int32_t cmd = (int32_t)cmd_f;
@@ -87,7 +142,11 @@ void loop() {
     M5.Display.setCursor(0, 0);
 
     M5.Display.setTextSize(2);
-    M5.Display.printf("BNO055 + Roller485\n");
+#ifdef USE_ESPIDF_BNO055
+    M5.Display.printf("BNO(ESP-IDF)+Roller\n");
+#else
+    M5.Display.printf("BNO(Wire)+Roller\n");
+#endif
     M5.Display.setTextSize(1);
     M5.Display.printf("cmd:%ld  addrR:0x%02X addrB:0x%02X\n",
                       (long)cmd, ROLLER_ADDR, BNO_ADDR);
